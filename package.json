@@ -1,0 +1,27 @@
+{
+  "name": "minecraft-server-ondemand",
+  "version": "0.1.0",
+  "scripts": {
+    "typecheck": "tsc",
+    "build": "pnpm run typecheck && esbuild bin/app.ts --bundle --platform=node --target=node24 --outfile=dist/app.js --sourcemap --external:aws-cdk-lib --external:aws-cdk-lib/* --external:constructs",
+    "watch": "tsc -w",
+    "test": "jest",
+    "synth": "pnpm run build && cdk synth",
+    "deploy": "pnpm run build && cdk deploy --all",
+    "destroy": "cdk destroy --all",
+    "cdk": "cdk"
+  },
+  "devDependencies": {
+    "@types/jest": "^30",
+    "@types/node": "^24.10.1",
+    "aws-cdk": "2.1128.1",
+    "esbuild": "^0.28.1",
+    "jest": "^30",
+    "ts-jest": "^29",
+    "typescript": "~5.9.3"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.260.0",
+    "constructs": "^10.5.0"
+  }
+}
