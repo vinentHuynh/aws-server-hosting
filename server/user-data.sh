@@ -21,8 +21,13 @@ IDLE_CHECK_INTERVAL_MINUTES="__IDLE_CHECK_INTERVAL_MINUTES__"
 PAPER_MC_VERSION="__PAPER_MC_VERSION__"
 DISCORD_WEBHOOK_PARAM_NAME="__DISCORD_WEBHOOK_PARAM_NAME__"
 CONNECT_HOSTNAME="__CONNECT_HOSTNAME__"
-JVM_XMS="1G"
-JVM_XMX="3G"
+# GregTech: New Horizons (Minecraft 1.7.10 + Forge) is launched via lwjgl3ify's
+# forge-patches jar with the modpack's java9args.txt, not a vanilla server.jar.
+# Heap is fixed (Xms==Xmx) per the modpack's own start script; the instance must
+# have headroom above this (see instanceType in config.ts).
+JVM_XMS="6G"
+JVM_XMX="6G"
+SERVER_LAUNCH_JAR="lwjgl3ify-forgePatches.jar"
 
 # --- Detect and mount the world volume -------------------------------------
 
@@ -95,16 +100,15 @@ chown -R "${SERVICE_USER}:${SERVICE_USER}" "$MOUNT_POINT"
 
 # --- Server files --------------------------------------------------------------
 
-SERVER_JAR="$MOUNT_POINT/server.jar"
-if [[ ! -f "$SERVER_JAR" ]]; then
-  echo "No server jar present, downloading Paper $PAPER_MC_VERSION"
-  BUILD="$(curl -s "https://api.papermc.io/v2/projects/paper/versions/${PAPER_MC_VERSION}" | jq -r '.builds[-1]')"
-  DOWNLOAD_NAME="paper-${PAPER_MC_VERSION}-${BUILD}.jar"
-  curl -s -o "$SERVER_JAR" \
-    "https://api.papermc.io/v2/projects/paper/versions/${PAPER_MC_VERSION}/builds/${BUILD}/downloads/${DOWNLOAD_NAME}"
-  chown "${SERVICE_USER}:${SERVICE_USER}" "$SERVER_JAR"
-else
-  echo "Existing server.jar found, leaving it in place"
+# GTNH is not downloadable like Paper -- the modpack files must be imported
+# onto the world volume first (scripts/import-server-files.sh, then move into
+# $MOUNT_POINT). Don't fail the boot if they're missing yet: the operator may be
+# provisioning the instance before the first import. mcserver.service simply
+# won't start successfully until the jar + java9args.txt are present.
+SERVER_JAR="$MOUNT_POINT/$SERVER_LAUNCH_JAR"
+if [[ ! -f "$SERVER_JAR" || ! -f "$MOUNT_POINT/java9args.txt" ]]; then
+  echo "WARNING: $SERVER_LAUNCH_JAR and/or java9args.txt not found in $MOUNT_POINT." >&2
+  echo "Import the GTNH server files before the Minecraft service can start." >&2
 fi
 
 EULA_FILE="$MOUNT_POINT/eula.txt"
@@ -158,7 +162,9 @@ StartLimitBurst=5
 Type=simple
 User=${SERVICE_USER}
 WorkingDirectory=${MOUNT_POINT}
-ExecStart=/usr/bin/java -Xms${JVM_XMS} -Xmx${JVM_XMX} -jar ${SERVER_JAR} nogui
+# @java9args.txt is resolved relative to WorkingDirectory ($MOUNT_POINT), where
+# the import places it alongside the jar.
+ExecStart=/usr/bin/java -Xms${JVM_XMS} -Xmx${JVM_XMX} -Dfml.readTimeout=180 @java9args.txt -jar ${SERVER_JAR} nogui
 Restart=on-failure
 RestartSec=15
 TimeoutStartSec=300

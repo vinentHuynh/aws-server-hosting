@@ -19,8 +19,8 @@
   "context": {
     "environment": "test",
     "useSpot": false,
-    "instanceType": "t3.medium",
-    "worldVolumeSizeGiB": 10,
+    "instanceType": "r5.large",
+    "worldVolumeSizeGiB": 25,
     "rootVolumeSizeGiB": 8,
     "minecraftPort": 25565,
     "rconPort": 25575,

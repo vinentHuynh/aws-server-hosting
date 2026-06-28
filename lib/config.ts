@@ -23,8 +23,10 @@ export interface AppConfig {
 export function getConfig(app: App): AppConfig {
   const environment = stringContext(app, 'environment', '');
   const useSpot = boolContext(app, 'useSpot', false);
-  const instanceType = stringContext(app, 'instanceType', 't3.medium');
-  const worldVolumeSizeGiB = numberContext(app, 'worldVolumeSizeGiB', 10);
+  // GTNH needs ~6G heap; r5.large (16 GiB) leaves headroom for the JVM + OS.
+  const instanceType = stringContext(app, 'instanceType', 'r5.large');
+  // GTNH server install (mods/libraries/world) is multiple GiB; 10 is too small.
+  const worldVolumeSizeGiB = numberContext(app, 'worldVolumeSizeGiB', 25);
   const rootVolumeSizeGiB = numberContext(app, 'rootVolumeSizeGiB', 8);
   const minecraftPort = numberContext(app, 'minecraftPort', 25565);
   const rconPort = numberContext(app, 'rconPort', 25575);
