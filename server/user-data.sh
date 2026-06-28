@@ -19,6 +19,8 @@ EULA_ACCEPTED="__EULA_ACCEPTED__"
 IDLE_TIMEOUT_SECONDS="__IDLE_TIMEOUT_SECONDS__"
 IDLE_CHECK_INTERVAL_MINUTES="__IDLE_CHECK_INTERVAL_MINUTES__"
 PAPER_MC_VERSION="__PAPER_MC_VERSION__"
+DISCORD_WEBHOOK_PARAM_NAME="__DISCORD_WEBHOOK_PARAM_NAME__"
+CONNECT_HOSTNAME="__CONNECT_HOSTNAME__"
 JVM_XMS="1G"
 JVM_XMX="3G"
 
@@ -169,7 +171,7 @@ systemctl daemon-reload
 systemctl enable mcserver.service
 systemctl restart mcserver.service
 
-# --- Idle checker installation --------------------------------------------------
+# --- Idle checker, manual-stop, and ready-notify installation -------------------
 
 cat > /etc/mc-ondemand.env <<EOF
 SERVICE_NAME=mcserver
@@ -177,10 +179,14 @@ RCON_PORT=${RCON_PORT}
 RCON_PARAM_NAME=${RCON_PARAM_NAME}
 IDLE_TIMEOUT_SECONDS=${IDLE_TIMEOUT_SECONDS}
 STATE_DIR=/var/run/mc-ondemand
+DISCORD_WEBHOOK_PARAM_NAME=${DISCORD_WEBHOOK_PARAM_NAME}
+CONNECT_HOSTNAME=${CONNECT_HOSTNAME}
 EOF
 chmod 600 /etc/mc-ondemand.env
 
 install -m 0755 -o root -g root /tmp/idle-check.sh /usr/local/bin/mc-idle-check.sh
+install -m 0755 -o root -g root /tmp/manual-stop.sh /usr/local/bin/mc-manual-stop.sh
+install -m 0755 -o root -g root /tmp/ready-notify.sh /usr/local/bin/mc-ready-notify.sh
 
 cat > /etc/systemd/system/mc-idle-check.service <<EOF
 [Unit]
@@ -205,7 +211,19 @@ AccuracySec=30s
 WantedBy=timers.target
 EOF
 
+cat > /etc/systemd/system/mc-ready-notify.service <<EOF
+[Unit]
+Description=Announce Minecraft server readiness on Discord
+After=mcserver.service
+
+[Service]
+Type=oneshot
+Environment=PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+ExecStart=/usr/local/bin/mc-ready-notify.sh
+EOF
+
 systemctl daemon-reload
 systemctl enable --now mc-idle-check.timer
+systemctl enable --now mc-ready-notify.service
 
 echo "=== mc-ondemand bootstrap complete: $(date -u) ==="

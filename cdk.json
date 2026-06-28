@@ -27,6 +27,8 @@
     "maxPlayers": 3,
     "idleTimeoutSeconds": 1500,
     "idleCheckIntervalMinutes": 5,
+    "discordEnabled": true,
+    "discordPublicKey": "8c6eac65a884d7d10c0f31bf9adf102291f7c4a6265861d7758f861591f722c7",
     "enableSsh": false,
     "mcEulaAccepted": true,
     "@aws-cdk-containers/ecs-service-extensions:enableDefaultLogDriver": true,

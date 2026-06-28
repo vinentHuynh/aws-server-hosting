@@ -9,9 +9,15 @@
     "synth": "pnpm run build && cdk synth",
     "deploy": "pnpm run build && cdk deploy --all",
     "destroy": "cdk destroy --all",
-    "cdk": "cdk"
+    "cdk": "cdk",
+    "server:start": "bash scripts/server-power.sh start",
+    "server:stop": "bash scripts/server-power.sh stop",
+    "discord:register-commands": "bash scripts/register-discord-commands.sh",
+    "discord:set-interactions-url": "bash scripts/set-discord-interactions-url.sh",
+    "import:files": "bash scripts/import-server-files.sh"
   },
   "devDependencies": {
+    "@types/aws-lambda": "^8.10.162",
     "@types/jest": "^30",
     "@types/node": "^24.10.1",
     "aws-cdk": "2.1128.1",
@@ -21,7 +27,12 @@
     "typescript": "~5.9.3"
   },
   "dependencies": {
+    "@aws-sdk/client-cost-explorer": "^3.1075.0",
+    "@aws-sdk/client-ec2": "^3.1075.0",
+    "@aws-sdk/client-lambda": "^3.1075.0",
+    "@aws-sdk/client-ssm": "^3.1075.0",
     "aws-cdk-lib": "^2.260.0",
-    "constructs": "^10.5.0"
+    "constructs": "^10.5.0",
+    "tweetnacl": "^1.0.3"
   }
 }

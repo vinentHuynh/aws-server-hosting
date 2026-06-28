@@ -22,8 +22,8 @@ Planning-only checklist for implementation by a coding agent. This document is i
 - [x] Keep the idle timeout at exactly 25 minutes.
 - [x] Use a public subnet with:
 	- [x] No NAT gateway
-	- [x] No Elastic IP
-	- [ ] Dynamic Route 53 DNS update on boot *(deferred; connect via raw public IP for now)*
+	- [ ] No Elastic IP *(reversed by request on 2026-06-25: an EIP is now allocated and associated with the instance so the address stays stable across stop/start. Costs ~$0.005/hr continuously, ~$3.60/mo, including while stopped — accepted tradeoff for a stable connect address. See `lib/server-stack.ts`'s `ServerEip`.)*
+	- [ ] Dynamic Route 53 DNS update on boot *(deferred; connect via the static IP for now)*
 - [x] Use the dedicated EBS volume as the authoritative copy of the world.
 - [x] Treat S3 staging as optional rather than required for every boot. *(S3 staging itself isn't implemented yet — not needed for the Paper test build)*
 - [x] Use standard SSM parameters where possible to minimize recurring secret-storage cost.
@@ -139,8 +139,8 @@ gtnh-ondemand/
 - [ ] Import an existing public hosted zone when an ID is supplied. *(deferred)*
 - [ ] Otherwise create a public hosted zone. *(deferred)*
 - [ ] Create or prepare management of an A record for the server hostname. *(deferred)*
-- [x] Do not allocate an Elastic IP.
-- [ ] Grant the EC2 role permission to update only the required hosted zone or record. *(deferred — no Route 53 yet)*
+- [ ] Do not allocate an Elastic IP. *(reversed by request on 2026-06-25 — see Section 1 note)*
+- [ ] Grant the EC2 role permission to update only the required hosted zone or record. *(deferred — no Route 53 yet; with a static EIP now in place, dynamic DNS update matters less, but a stable hostname would still be nicer than a raw IP)*
 - [ ] Export or expose:
 	- [x] VPC
 	- [x] Public subnet
@@ -562,7 +562,7 @@ Entire section deferred — no Discord bot exists yet.
 	- [ ] 30 GB world EBS volume *(test build defaults to 10 GB)*
 	- [ ] 16 GB root volume *(test build defaults to 8 GB)*
 	- [x] No NAT gateway
-	- [x] No Elastic IP
+	- [ ] No Elastic IP *(reversed by request on 2026-06-25 — see Section 1 note)*
 	- [x] On-Demand instance initially
 	- [x] Auto-stop after 25 empty minutes
 	- [x] Five-minute player-count polling
@@ -575,7 +575,7 @@ Entire section deferred — no Discord bot exists yet.
 ### CDK tests
 
 - [x] Verify no NAT gateway is created.
-- [x] Verify no Elastic IP is created.
+- [ ] Verify no Elastic IP is created. *(no longer applicable — a static EIP is now intentional; the network-stack test still verifies zero EIPs at that stack's level since the EIP lives in ServerStack)*
 - [ ] Verify the instance type is m6i.large. *(test asserts t3.medium, matching the current config)*
 - [ ] Verify root storage is 16 GB gp3. *(test asserts 8 GB, matching the current config)*
 - [ ] Verify world storage is 30 GB gp3. *(test asserts 10 GB, matching the current config)*
@@ -682,7 +682,7 @@ Not written yet for this implementation. The repo's `README.md` is still the ori
 	- [ ] Why the volume is 30 GB despite a current 4-10 GB world
 	- [ ] Why RCON is localhost-only
 	- [ ] Why there is no NAT gateway
-	- [ ] Why there is no Elastic IP
+	- [ ] Why a static Elastic IP is used (and its small recurring cost)
 	- [ ] Required AWS prerequisites
 	- [ ] Required Route 53 domain setup
 	- [ ] CDK bootstrap instructions
@@ -729,7 +729,7 @@ Not written yet for this implementation. The repo's `README.md` is still the ori
 - [x] World data survives EC2 replacement. (verified live this session, via an in-place CloudFormation update)
 - [ ] Daily snapshots exist and can be restored. *(DLM not implemented)*
 - [x] No RCON port is publicly exposed.
-- [x] No NAT gateway or Elastic IP generates unnecessary recurring charges.
+- [ ] No NAT gateway or Elastic IP generates unnecessary recurring charges. *(no NAT gateway, but a static EIP was added by request on 2026-06-25 — small accepted recurring cost, ~$3.60/mo)*
 - [x] No secret is committed to source control.
 
 ---

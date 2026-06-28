@@ -28,6 +28,22 @@ log() {
   echo "mc-idle-check: $*"
 }
 
+# Best-effort; the webhook is optional, so a missing parameter or failed POST
+# must never block the actual shutdown.
+post_webhook() {
+  local message="$1"
+  local param_name="${DISCORD_WEBHOOK_PARAM_NAME:-}"
+  [[ -n "$param_name" ]] || return 0
+  local region
+  region="$(curl -s -H "X-aws-ec2-metadata-token: $IMDS_TOKEN" http://169.254.169.254/latest/meta-data/placement/region 2>/dev/null || true)"
+  local webhook_url
+  webhook_url="$(aws ssm get-parameter --name "$param_name" --with-decryption --query 'Parameter.Value' --output text --region "$region" 2>/dev/null || true)"
+  [[ -n "$webhook_url" ]] || return 0
+  curl -s -X POST -H 'Content-Type: application/json' \
+    -d "$(printf '{"content":"%s"}' "$message")" "$webhook_url" >/dev/null \
+    || log "webhook POST failed"
+}
+
 if [[ -f "$STOP_REQUESTED_FILE" ]]; then
   log "stop already requested, skipping"
   exit 0
@@ -88,6 +104,7 @@ fi
 
 log "idle threshold reached, shutting down gracefully"
 touch "$STOP_REQUESTED_FILE"
+post_webhook "💤 Server was empty for 25 min — shutting down to save costs."
 
 mcrcon -H 127.0.0.1 -P "$RCON_PORT" -p "$RCON_PASSWORD" save-all || true
 sleep 5

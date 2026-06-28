@@ -1,8 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { CfnOutput, RemovalPolicy, Size, Stack, StackProps, Tags } from 'aws-cdk-lib';
+import { CfnOutput, Duration, RemovalPolicy, Size, Stack, StackProps, Tags } from 'aws-cdk-lib';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as s3 from 'aws-cdk-lib/aws-s3';
 import { Construct } from 'constructs';
 import { AppConfig } from './config';
 
@@ -17,6 +18,8 @@ const SERVICE_USER = 'mcserver';
 
 export class ServerStack extends Stack {
   public readonly instance: ec2.Instance;
+  public readonly publicIp: string;
+  public readonly importBucket: s3.Bucket;
 
   constructor(scope: Construct, id: string, props: ServerStackProps) {
     super(scope, id, props);
@@ -52,13 +55,18 @@ export class ServerStack extends Stack {
 
     role.addToPolicy(
       new iam.PolicyStatement({
-        sid: 'ReadRconPassword',
+        sid: 'ReadRconPasswordAndWebhook',
         actions: ['ssm:GetParameter'],
         resources: [
           this.formatArn({
             service: 'ssm',
             resource: 'parameter',
             resourceName: config.rconParameterName.replace(/^\//, ''),
+          }),
+          this.formatArn({
+            service: 'ssm',
+            resource: 'parameter',
+            resourceName: config.discordWebhookParameterName.replace(/^\//, ''),
           }),
         ],
       }),
@@ -85,6 +93,24 @@ export class ServerStack extends Stack {
     Tags.of(this.instance).add('Role', 'mc-server');
     Tags.of(this.instance).add('Environment', config.environment);
 
+    // Static IP so the address doesn't change across stop/start. Costs ~$0.005/hr
+    // (~$3.60/mo) continuously, including while stopped, unlike the default
+    // auto-assigned public IP which is free while the instance is stopped.
+    //
+    // Allocated standalone (no instanceId here) and associated via a separate
+    // CfnEIPAssociation below, rather than associating at allocation time:
+    // the instance's user-data embeds the EIP's address, so the EIP can't
+    // also depend on the instance without a circular dependency.
+    const eip = new ec2.CfnEIP(this, 'ServerEip', {
+      domain: 'vpc',
+    });
+    Tags.of(eip).add('Environment', config.environment);
+
+    new ec2.CfnEIPAssociation(this, 'ServerEipAssociation', {
+      allocationId: eip.attrAllocationId,
+      instanceId: this.instance.instanceId,
+    });
+
     const worldVolume = new ec2.Volume(this, 'WorldVolume', {
       // Pinned directly from the VPC (single-AZ) rather than the instance's own
       // AZ attribute, which would create a circular dependency: the instance's
@@ -105,24 +131,32 @@ export class ServerStack extends Stack {
       device: '/dev/sdf',
     });
 
-    this.instance.userData.addCommands(...this.renderUserData(config, worldVolume.volumeId));
+    // Transient staging area for importing server/world files. The EBS world
+    // volume remains the authoritative copy; this is just a transfer pipe
+    // (local machine -> S3 -> instance), so objects expire automatically and
+    // the bucket is fine to destroy with the stack.
+    this.importBucket = new s3.Bucket(this, 'ImportBucket', {
+      removalPolicy: RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
+      lifecycleRules: [{ expiration: Duration.days(30) }],
+    });
+    this.importBucket.grantRead(role);
+
+    this.publicIp = eip.attrPublicIp;
+    this.instance.userData.addCommands(
+      ...this.renderUserData(config, worldVolume.volumeId, this.publicIp),
+    );
 
     new CfnOutput(this, 'InstanceId', { value: this.instance.instanceId });
-    new CfnOutput(this, 'HowToFindPublicIp', {
-      value: `aws ec2 describe-instances --instance-ids ${this.instance.instanceId} --query "Reservations[0].Instances[0].PublicIpAddress" --output text --profile mc-deployer --region ${this.region}`,
-    });
+    new CfnOutput(this, 'PublicIp', { value: this.publicIp });
+    new CfnOutput(this, 'ImportBucketName', { value: this.importBucket.bucketName });
   }
 
-  private renderUserData(config: AppConfig, worldVolumeId: string): string[] {
-    const idleCheckScript = fs.readFileSync(
-      path.join(__dirname, '..', 'server', 'idle-check.sh'),
-      'utf8',
-    );
+  private renderUserData(config: AppConfig, worldVolumeId: string, publicIp: string): string[] {
+    const readScript = (name: string) =>
+      fs.readFileSync(path.join(__dirname, '..', 'server', name), 'utf8');
 
-    let bootScript = fs.readFileSync(
-      path.join(__dirname, '..', 'server', 'user-data.sh'),
-      'utf8',
-    );
+    let bootScript = readScript('user-data.sh');
     // ec2.UserData.forLinux() already emits its own "#!/bin/bash" shebang.
     bootScript = bootScript.replace(/^#!.*\n/, '');
 
@@ -138,13 +172,21 @@ export class ServerStack extends Stack {
       __IDLE_TIMEOUT_SECONDS__: String(config.idleTimeoutSeconds),
       __IDLE_CHECK_INTERVAL_MINUTES__: String(config.idleCheckIntervalMinutes),
       __PAPER_MC_VERSION__: '1.21.4',
+      __DISCORD_WEBHOOK_PARAM_NAME__: config.discordWebhookParameterName,
+      __CONNECT_HOSTNAME__: publicIp,
     };
     for (const [token, value] of Object.entries(substitutions)) {
       bootScript = bootScript.split(token).join(value);
     }
 
-    const writeIdleCheck = `cat > /tmp/idle-check.sh <<'MC_IDLE_CHECK_EOF'\n${idleCheckScript}\nMC_IDLE_CHECK_EOF`;
+    const embed = (tmpName: string, fileName: string, delimiter: string) =>
+      `cat > /tmp/${tmpName} <<'${delimiter}'\n${readScript(fileName)}\n${delimiter}`;
 
-    return [writeIdleCheck, bootScript];
+    return [
+      embed('idle-check.sh', 'idle-check.sh', 'MC_IDLE_CHECK_EOF'),
+      embed('manual-stop.sh', 'manual-stop.sh', 'MC_MANUAL_STOP_EOF'),
+      embed('ready-notify.sh', 'ready-notify.sh', 'MC_READY_NOTIFY_EOF'),
+      bootScript,
+    ];
   }
 }

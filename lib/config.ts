@@ -15,6 +15,9 @@ export interface AppConfig {
   readonly sshCidr?: string;
   readonly mcEulaAccepted: boolean;
   readonly rconParameterName: string;
+  readonly discordEnabled: boolean;
+  readonly discordPublicKey?: string;
+  readonly discordWebhookParameterName: string;
 }
 
 export function getConfig(app: App): AppConfig {
@@ -40,6 +43,13 @@ export function getConfig(app: App): AppConfig {
     'rconParameterName',
     `/minecraft-server-ondemand/${environment}/rcon-password`,
   );
+  const discordEnabled = boolContext(app, 'discordEnabled', false);
+  const discordPublicKey = app.node.tryGetContext('discordPublicKey') as string | undefined;
+  const discordWebhookParameterName = stringContext(
+    app,
+    'discordWebhookParameterName',
+    `/minecraft-server-ondemand/${environment}/discord-webhook-url`,
+  );
 
   if (useSpot) {
     throw new Error('useSpot=true is not implemented yet; keep useSpot=false.');
@@ -60,6 +70,9 @@ export function getConfig(app: App): AppConfig {
   if (enableSsh && !sshCidr) {
     throw new Error('sshCidr is required in context when enableSsh=true.');
   }
+  if (discordEnabled && !discordPublicKey) {
+    throw new Error('discordPublicKey is required in context when discordEnabled=true.');
+  }
 
   return {
     environment,
@@ -76,6 +89,9 @@ export function getConfig(app: App): AppConfig {
     sshCidr,
     mcEulaAccepted,
     rconParameterName,
+    discordEnabled,
+    discordPublicKey,
+    discordWebhookParameterName,
   };
 }
 
